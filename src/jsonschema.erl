@@ -3,14 +3,17 @@
 -export([validate/2]).
 
 
-%% Возвращает {ok, Document}, если документ `Document` валидируется
-%% схемой `Schema` либо {error, /описание ошибки/} в случае, если это не так
-
 validate(Document, {struct, SchemaProps}) ->
     io:format("Validating ~p using ~p~n", [Document, SchemaProps]),
     %% проверяем все подряд херни, которые могут быть указаны в схеме
     Type = proplists:get_value(<<"type">>, SchemaProps, <<"any">>),
-    validate(Document, <<"type">>, Type);
+    ok = validate(Document, <<"type">>, Type),
+    %% {struct, Properties} = proplists:get_value(<<"properties">>, SchemaProps, []),
+    %% ok = validate(Document, <<"properties">>, Properties),
+    Minimum = proplists:get_value(<<"minimum">>, SchemaProps),
+    ok = validate(Document, <<"minimum">>, Minimum),
+    Maximum = proplists:get_value(<<"maximum">>, SchemaProps),
+    ok = validate(Document, <<"maximum">>, Maximum);
 
 validate(_Document, _Schema) ->
     {error, "Schema must be an object"}.
@@ -48,8 +51,26 @@ validate(Document, <<"type">>, Union) when is_list(Union) ->
                              end,
                              Union)) of
         true -> ok;
-        false -> {error, {type_error, Document, Union}}
+        false -> {error, {type, Document, Union}}
     end;
 
 validate(Document, <<"type">>, Type) ->
-    {error, {type_error, Document, Type}}.
+    {error, {type, Document, Type}};
+
+validate(_Document, <<"minimum">>, undefined) ->
+    ok;
+validate(Document, <<"minimum">>, Minimum) when is_number(Document), Document >= Minimum ->
+    ok;
+validate(Document, <<"minimum">>, Minimum) when is_number(Document) ->
+    {error, {minimum, Document, Minimum}};
+validate(_Document, <<"minimum">>, _Minimum) ->
+    ok;
+
+validate(_Document, <<"maximum">>, undefined) ->
+    ok;
+validate(Document, <<"maximum">>, Maximum) when is_number(Document), Document =< Maximum ->
+    ok;
+validate(Document, <<"maximum">>, Maximum) when is_number(Document) ->
+    {error, {maximum, Document, Maximum}};
+validate(_Document, <<"maximum">>, _Maximum) ->
+    ok.
