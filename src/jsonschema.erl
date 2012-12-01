@@ -15,7 +15,8 @@ validate(Document, Schema) ->
 validate1(Document, Schema={struct, SchemaProps}) ->
     Attrs = [{<<"type">>, <<"any">>},
              {<<"minimum">>, undefined},
-             {<<"maximum">>, undefined}
+             {<<"maximum">>, undefined},
+             {<<"enum">>, undefined}
             ],
     lists:filter(fun ([]) -> false;
                      (ok) -> false;
@@ -93,4 +94,18 @@ validate(Document, _Schema={struct, SchemaProps}, <<"maximum">>, Maximum) when i
         _ -> {maximum, Document, Maximum}
     end;
 validate(_Document, _Schema, <<"maximum">>, _Maximum) ->
+    ok;
+validate(Document, _Schema, <<"enum">>, Enum) when is_list(Enum) ->
+    case lists:any(fun (Value) when Value =:= Document -> true;
+                 (_) -> false
+              end,
+              Enum) of
+        true -> ok;
+        false -> {enum, Document, Enum}
+    end;
+        
+validate(_Document, _Schema, <<"enum">>, _) ->
+    ok;
+validate({struct, DocumentProperties}, Schema, <<"properties">>, Properties) ->
     ok.
+

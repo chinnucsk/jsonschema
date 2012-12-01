@@ -34,4 +34,11 @@ step([these, are, valid, 'json:'], World=#world{schema=Schema}, _Info=#sedate_in
                       ok = jsonschema:validate(mochijson2:decode(Document), Schema)
               end,
               DocumentsTable),
+    {ok, World};
+
+step([these, are, 'not', valid, 'json:'], World=#world{schema=Schema}, _Info=#sedate_info{table=DocumentsTable}) ->
+    lists:map(fun ([Document]) ->
+                      {error, _} = jsonschema:validate(mochijson2:decode(Document), Schema)
+              end,
+              DocumentsTable),
     {ok, World}.
