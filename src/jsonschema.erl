@@ -3,74 +3,94 @@
 -export([validate/2]).
 
 
-validate(Document, {struct, SchemaProps}) ->
-    io:format("Validating ~p using ~p~n", [Document, SchemaProps]),
-    %% проверяем все подряд херни, которые могут быть указаны в схеме
-    Type = proplists:get_value(<<"type">>, SchemaProps, <<"any">>),
-    ok = validate(Document, <<"type">>, Type),
-    %% {struct, Properties} = proplists:get_value(<<"properties">>, SchemaProps, []),
-    %% ok = validate(Document, <<"properties">>, Properties),
-    Minimum = proplists:get_value(<<"minimum">>, SchemaProps),
-    ok = validate(Document, <<"minimum">>, Minimum),
-    Maximum = proplists:get_value(<<"maximum">>, SchemaProps),
-    ok = validate(Document, <<"maximum">>, Maximum);
 
-validate(_Document, _Schema) ->
+
+validate(Document, Schema) ->
+    case validate1(Document, Schema) of
+        [] -> ok;
+        Errors -> {error, Errors}
+    end.
+
+
+validate1(Document, Schema={struct, SchemaProps}) ->
+    Attrs = [{<<"type">>, <<"any">>},
+             {<<"minimum">>, undefined},
+             {<<"maximum">>, undefined}
+            ],
+    lists:filter(fun ([]) -> false;
+                     (ok) -> false;
+                     (_) -> true
+                 end,
+                 
+                 lists:map(fun ({Attr, Default}) ->  
+                                   validate(Document, Schema, Attr, proplists:get_value(Attr, SchemaProps, Default))
+                           end,
+                           Attrs));
+
+validate1(_Document, _Schema) ->
     {error, "Schema must be an object"}.
 
 
-validate(Document, <<"type">>, <<"string">>) when is_binary(Document) ->
+validate(Document, _Schema, <<"type">>, <<"string">>) when is_binary(Document) ->
     ok;
-validate(Document, <<"type">>, <<"number">>) when is_number(Document) ->
+validate(Document, _Schema, <<"type">>, <<"number">>) when is_number(Document) ->
     ok;
-validate(Document, <<"type">>, <<"integer">>) when is_integer(Document) ->
+validate(Document, _Schema, <<"type">>, <<"integer">>) when is_integer(Document) ->
     ok;
-validate(true, <<"type">>, <<"boolean">>) ->
+validate(true, _Schema, <<"type">>, <<"boolean">>) ->
     ok;
-validate(false, <<"type">>, <<"boolean">>) ->
+validate(false, _Schema, <<"type">>, <<"boolean">>) ->
     ok;
-validate({struct, _Document}, <<"type">>, <<"object">>) ->
+validate({struct, _Document}, _Schema, <<"type">>, <<"object">>) ->
     ok;
-validate(Document, <<"type">>, <<"array">>) when is_list(Document) ->
+validate(Document, _Schema, <<"type">>, <<"array">>) when is_list(Document) ->
     ok;
-validate(null, <<"type">>, <<"null">>) ->
+validate(null, _Schema, <<"type">>, <<"null">>) ->
     ok;
-validate(_Document, <<"type">>, <<"any">>) ->
+validate(_Document, _Schema, <<"type">>, <<"any">>) ->
     ok;
 
-validate(Document, <<"type">>, Union) when is_list(Union) ->
-    case lists:any(fun (ok) ->
-                      true;
-                  ({error, _}) ->
-                           false
-                   end,
-                   lists:map(fun (Schema={struct, _}) ->
-                                     validate(Document, Schema);
-                                 (Type) ->
-                                     validate(Document, <<"type">>, Type)
-                             end,
-                             Union)) of
+validate(Document, Schema, <<"type">>, Union) when is_list(Union) ->
+    Types = lists:map(fun (Schema={struct, _}) ->
+                              validate1(Document, Schema);
+                          (Type) ->
+                              validate(Document, Schema, <<"type">>, Type)
+                      end,
+                      Union),
+    Any = lists:any(fun (ok) ->
+                           true;
+                        ([]) ->
+                            true;
+                        (_) ->
+                            false
+                    end,
+                    Types),
+    case Any of
         true -> ok;
-        false -> {error, {type, Document, Union}}
+        false -> {type, Document, Union}
     end;
 
-validate(Document, <<"type">>, Type) ->
-    {error, {type, Document, Type}};
 
-validate(_Document, <<"minimum">>, undefined) ->
+validate(Document, _Schema, <<"type">>, Type) ->
+    {type, Document, Type};
+
+
+validate(_Document, _Schema, <<"minimum">>, _Minimum) ->
     ok;
-validate(Document, <<"minimum">>, Minimum) when is_number(Document), Document >= Minimum ->
-    ok;
-validate(Document, <<"minimum">>, Minimum) when is_number(Document) ->
-    {error, {minimum, Document, Minimum}};
-validate(_Document, <<"minimum">>, _Minimum) ->
+validate(Document, _Schema={struct, SchemaProps}, <<"minimum">>, Minimum) when is_number(Document), is_number(Minimum) ->
+    case proplists:get_value(<<"exclusiveMinimum">>, SchemaProps, false) of
+        true when Document > Minimum -> ok;
+        _ when Document >= Minimum -> ok;
+        _ -> {minimum, Document, Minimum}
+    end;
+validate(_Document, _Schema, <<"minimum">>, _Minimum) ->
     ok;
 
-validate(_Document, <<"maximum">>, undefined) ->
-    ok;
-validate(Document, <<"maximum">>, Maximum) when is_number(Document), Document =< Maximum ->
-    ok;
-validate(Document, <<"maximum">>, Maximum) when is_number(Document) ->
-    {error, {maximum, Document, Maximum}};
-validate(_Document, <<"maximum">>, _Maximum) ->
+validate(Document, _Schema={struct, SchemaProps}, <<"maximum">>, Maximum) when is_number(Document), is_number(Maximum) ->
+    case proplists:get_value(<<"exclusiveMaximum">>, SchemaProps, false) of
+        true when Document < Maximum -> ok;
+        _ when Document =< Maximum -> ok;
+        _ -> {maximum, Document, Maximum}
+    end;
+validate(_Document, _Schema, <<"maximum">>, _Maximum) ->
     ok.
