@@ -11,7 +11,7 @@ Feature: Core Schema: properties & additionalProperties
       """
     Then '{ "name": "Felizberto" }' is valid JSON
     And '{ "color": "red" }' is valid JSON
-    But '{ "name": 12345" }' is not valid JSON
+    But '{ "name": "12345" }' is not valid JSON
 
   Scenario: With extra attribute
     When the schema is:

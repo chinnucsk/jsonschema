@@ -41,4 +41,7 @@ step([these, are, 'not', valid, 'json:'], World=#world{schema=Schema}, _Info=#se
                       {error, _} = jsonschema:validate(mochijson2:decode(Document), Schema)
               end,
               DocumentsTable),
-    {ok, World}.
+    {ok, World};
+step(StepSpec, _World, _Info) ->
+    {error, {undefined_step, StepSpec}}.
+

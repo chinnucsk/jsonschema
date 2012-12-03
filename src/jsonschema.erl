@@ -4,6 +4,9 @@
 
 
 
+%% TODO: maybe I should use proplists module to unpack object's
+%% properties 
+
 
 validate(Document, Schema) ->
     case validate1(Document, Schema) of
@@ -16,7 +19,8 @@ validate1(Document, Schema={struct, SchemaProps}) ->
     Attrs = [{<<"type">>, <<"any">>},
              {<<"minimum">>, undefined},
              {<<"maximum">>, undefined},
-             {<<"enum">>, undefined}
+             {<<"enum">>, undefined},
+             {<<"properties">>,undefined}
             ],
     lists:filter(fun ([]) -> false;
                      (ok) -> false;
@@ -95,6 +99,7 @@ validate(Document, _Schema={struct, SchemaProps}, <<"maximum">>, Maximum) when i
     end;
 validate(_Document, _Schema, <<"maximum">>, _Maximum) ->
     ok;
+
 validate(Document, _Schema, <<"enum">>, Enum) when is_list(Enum) ->
     case lists:any(fun (Value) when Value =:= Document -> true;
                  (_) -> false
@@ -103,9 +108,68 @@ validate(Document, _Schema, <<"enum">>, Enum) when is_list(Enum) ->
         true -> ok;
         false -> {enum, Document, Enum}
     end;
-        
 validate(_Document, _Schema, <<"enum">>, _) ->
     ok;
-validate({struct, DocumentProperties}, Schema, <<"properties">>, Properties) ->
+
+validate({struct, DocumentProperties}, _Schema, <<"properties">>, {struct, Properties}) ->
+    %% каждый проперти из объявленных в Properties достаём из
+    %% документа и валидируем
+    Result = lists:map(fun ({PropertyName, PropertySchema}) -> 
+                      PropertyValue = proplists:get_value(PropertyName, DocumentProperties),
+                      validate1(PropertyValue, PropertySchema)
+              end,
+                       Properties),
+    lists:filter(fun ([]) -> false;
+                     (ok) -> false;
+                     (_) -> true
+                 end,
+                 Result);
+validate(_Document, _Schema, <<"properties">>, undefined) ->
+    ok;
+
+validate(Document={struct, _DocumentProperties}, 
+         Schema={struct, _SchemaProperties}, 
+         <<"additionalProperties">>, false) ->
+    case additional_properties(Document, Schema) of
+        [] -> ok;
+        AdditionalProperties -> {additional_properties, Document, AdditionalProperties}
+    end;
+validate(Document={struct, DocumentProperties},
+         Schema={struct, _SchemaProperties},
+         <<"additionalProperties">>, 
+         AdditionalPropertiesSchema) ->
+    lists:filter(fun (ok) -> false;
+                     ([]) -> false;
+                     (_) -> true
+                 end,
+                 lists:map(fun(PropertyName) ->
+                                   validate1(
+                                     proplists:get_value(PropertyName, DocumentProperties),
+                                     AdditionalPropertiesSchema
+                                    )
+                           end,
+                           additional_properties(Document, Schema)));
+%% special case for empty additional properties
+validate(_Document, _Schema, <<"additional properties">>, {struct, []}) ->
     ok.
+
+    
+
+%% internal functions
+additional_properties({struct, DocumentProperties}, {struct, SchemaProperties}) ->
+    %% вынимаем все проперти документа и проверяем, определены ли они
+    %% в списке пропертей
+    DefinedPropertiesNames = 
+        case proplists:get_value(<<"properties">>, SchemaProperties) of
+            {struct, Properties} ->
+                proplists:get_keys(Properties);
+            undefined -> []
+        end,
+    DocumentPropertiesNames = proplists:get_keys(DocumentProperties),
+    %% NOTE: The complexity of lists:subtract(A, B) is proportional to
+    %% length(A)*length(B), meaning that it will be very slow if both
+    %% A and B are long lists. (Using ordered lists and
+    %% ordsets:subtract/2 is a much better choice if both lists are
+    %% long.)
+    lists:subtract(DocumentPropertiesNames, DefinedPropertiesNames).
 
